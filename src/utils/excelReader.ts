@@ -1,6 +1,11 @@
 import * as XLSX from 'xlsx';
 import { Flashcard } from '@/types/flashcard';
 
+export interface FlashcardChapter {
+  letter: string;
+  cards: Flashcard[];
+}
+
 export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
   try {
     const response = await fetch(filePath);
@@ -48,4 +53,35 @@ export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
     console.error('Error reading Excel file:', error);
     throw error;
   }
+}
+
+export function groupFlashcardsByLetter(flashcards: Flashcard[]): FlashcardChapter[] {
+  const chapters: { [key: string]: Flashcard[] } = {};
+  
+  // Group flashcards by first letter
+  flashcards.forEach(card => {
+    const firstLetter = card.english.charAt(0).toUpperCase();
+    if (!chapters[firstLetter]) {
+      chapters[firstLetter] = [];
+    }
+    chapters[firstLetter].push(card);
+  });
+  
+  // Convert to array and sort alphabetically
+  const result: FlashcardChapter[] = Object.keys(chapters)
+    .sort()
+    .map(letter => ({
+      letter,
+      cards: chapters[letter].sort((a, b) => a.english.localeCompare(b.english))
+    }));
+    
+  return result;
+}
+
+export function getAllAvailableLetters(flashcards: Flashcard[]): string[] {
+  const letters = new Set<string>();
+  flashcards.forEach(card => {
+    letters.add(card.english.charAt(0).toUpperCase());
+  });
+  return Array.from(letters).sort();
 }
