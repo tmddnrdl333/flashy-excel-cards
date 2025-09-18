@@ -1,0 +1,209 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Flashcard } from '@/types/flashcard';
+import { readExcelFile } from '@/utils/excelReader';
+import { FlashcardComponent } from './FlashcardComponent';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+
+export function FlashcardApp() {
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const loadFlashcards = async () => {
+      try {
+        setIsLoading(true);
+        const cards = await readExcelFile('/words.xlsx');
+        
+        if (cards.length === 0) {
+          throw new Error('No flashcards found in the Excel file');
+        }
+        
+        setFlashcards(cards);
+        
+        // Check if we're using sample data or actual Excel file
+        try {
+          const response = await fetch('/words.xlsx');
+          if (response.ok) {
+            toast({
+              title: "Flashcards loaded!",
+              description: `Successfully loaded ${cards.length} flashcards from Excel file.`,
+            });
+          } else {
+            toast({
+              title: "Using sample data",
+              description: `No Excel file found. Loaded ${cards.length} sample flashcards. Upload words.xlsx to use your own data.`,
+            });
+          }
+        } catch {
+          toast({
+            title: "Using sample data", 
+            description: `No Excel file found. Loaded ${cards.length} sample flashcards. Upload words.xlsx to use your own data.`,
+          });
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load flashcards';
+        setError(errorMessage);
+        toast({
+          title: "Error loading flashcards",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFlashcards();
+  }, [toast]);
+
+  const goToNext = useCallback(() => {
+    if (flashcards.length > 0) {
+      setCurrentIndex((prev) => (prev + 1) % flashcards.length);
+    }
+  }, [flashcards.length]);
+
+  const goToPrevious = useCallback(() => {
+    if (flashcards.length > 0) {
+      setCurrentIndex((prev) => (prev - 1 + flashcards.length) % flashcards.length);
+    }
+  }, [flashcards.length]);
+
+  const resetToFirst = useCallback(() => {
+    setCurrentIndex(0);
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'ArrowRight' || event.code === 'KeyN') {
+        event.preventDefault();
+        goToNext();
+      } else if (event.code === 'ArrowLeft' || event.code === 'KeyP') {
+        event.preventDefault();
+        goToPrevious();
+      } else if (event.code === 'KeyR') {
+        event.preventDefault();
+        resetToFirst();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToNext, goToPrevious, resetToFirst]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-lg text-muted-foreground">Loading flashcards...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="text-center space-y-6 max-w-md">
+          <h2 className="text-2xl font-bold text-destructive">Error Loading Flashcards</h2>
+          <p className="text-muted-foreground">{error}</p>
+          <div className="bg-muted p-6 rounded-lg text-left space-y-3">
+            <p className="text-sm font-medium">Expected Excel file format:</p>
+            <ul className="text-sm space-y-1">
+              <li>• <strong>Column A:</strong> English words</li>
+              <li>• <strong>Column B:</strong> Korean meanings</li>
+              <li>• <strong>Column C:</strong> Synonyms (optional, comma-separated)</li>
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              Save as <code>words.xlsx</code> in the <code>/public</code> folder
+            </p>
+          </div>
+          <Button 
+            onClick={() => {
+              const { downloadSampleFile } = require('@/utils/createSampleData');
+              downloadSampleFile();
+            }}
+            className="w-full"
+          >
+            Download Sample Excel File
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (flashcards.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">No Flashcards Found</h2>
+          <p className="text-muted-foreground">Please add some data to your Excel file.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentCard = flashcards[currentIndex];
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-2xl space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl font-bold">Flashcards</h1>
+          <p className="text-muted-foreground">
+            Card {currentIndex + 1} of {flashcards.length}
+          </p>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p>Press <kbd className="px-2 py-1 bg-muted rounded text-xs">Space</kbd> to flip card</p>
+            <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←→</kbd> or <kbd className="px-2 py-1 bg-muted rounded text-xs">N</kbd>/<kbd className="px-2 py-1 bg-muted rounded text-xs">P</kbd> to navigate</p>
+          </div>
+        </div>
+
+        {/* Flashcard */}
+        <div className="flex justify-center">
+          <FlashcardComponent card={currentCard} />
+        </div>
+
+        {/* Controls */}
+        <div className="flex justify-center items-center gap-4">
+          <Button
+            onClick={goToPrevious}
+            variant="outline"
+            size="lg"
+            disabled={flashcards.length <= 1}
+          >
+            <ChevronLeft className="h-5 w-5" />
+            Previous
+          </Button>
+          
+          <Button
+            onClick={resetToFirst}
+            variant="outline"
+            size="lg"
+            disabled={currentIndex === 0}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset
+          </Button>
+          
+          <Button
+            onClick={goToNext}
+            variant="outline" 
+            size="lg"
+            disabled={flashcards.length <= 1}
+          >
+            Next
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
