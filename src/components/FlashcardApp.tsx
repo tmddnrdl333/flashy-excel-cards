@@ -75,6 +75,10 @@ export function FlashcardApp() {
     
     if (selectedChapter === 'STACK') {
       cards = [...wordStack].sort(() => Math.random() - 0.5); // Random order for word stack
+    } else if (selectedChapter === 'KNOWN') {
+      cards = allFlashcards.filter(card => card.isKnown);
+    } else if (selectedChapter === 'UNKNOWN') {
+      cards = allFlashcards.filter(card => !card.isKnown);
     } else if (selectedChapter === null) {
       cards = allFlashcards;
     } else {
@@ -128,71 +132,87 @@ export function FlashcardApp() {
 
   const handleKnowWord = useCallback(() => {
     const currentCard = currentFlashcards[currentIndex];
+    
+    // Update the flashcard to mark as known
+    const updatedFlashcards = allFlashcards.map(card => 
+      card.id === currentCard.id ? { ...card, isKnown: true } : card
+    );
+    setAllFlashcards(updatedFlashcards);
+    
+    // Remove from word stack if it was there
     if (selectedChapter === 'STACK') {
       removeFromStack(currentCard.id);
       toast({
         title: "Word removed from stack!",
-        description: `"${currentCard.english}" removed from your study list.`,
+        description: `"${currentCard.english}" marked as known and removed from study list.`,
       });
     } else {
       toast({
         title: "Great!",
-        description: `You know "${currentCard.english}"!`,
+        description: `"${currentCard.english}" marked as known!`,
       });
     }
-    goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, toast, goToNext]);
+    
+    // Move to next card
+    if (currentIndex < currentFlashcards.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, toast, allFlashcards]);
 
   const handleDontKnowWord = useCallback(() => {
     const currentCard = currentFlashcards[currentIndex];
-    if (selectedChapter !== 'STACK') {
-      addToStack(currentCard);
-      toast({
-        title: "Added to word stack!",
-        description: `"${currentCard.english}" added to your study list.`,
-      });
-    } else {
+    
+    // Update the flashcard to mark as unknown
+    const updatedFlashcards = allFlashcards.map(card => 
+      card.id === currentCard.id ? { ...card, isKnown: false } : card
+    );
+    setAllFlashcards(updatedFlashcards);
+    
+    // Add to word stack
+    addToStack({ ...currentCard, isKnown: false });
+    
+    if (selectedChapter === 'STACK') {
       toast({
         title: "Keep studying!",
         description: `"${currentCard.english}" stays in your study list.`,
       });
+    } else {
+      toast({
+        title: "Added to word stack!",
+        description: `"${currentCard.english}" marked as unknown and added to study list.`,
+      });
     }
-    goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, toast, goToNext]);
+    
+    // Move to next card
+    if (currentIndex < currentFlashcards.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, toast, allFlashcards]);
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === 'ArrowRight' || event.code === 'KeyN') {
+      if (event.code === 'ArrowLeft') {
         event.preventDefault();
-        goToNext();
-      } else if (event.code === 'ArrowLeft' || event.code === 'KeyP') {
+        handleKnowWord();
+      } else if (event.code === 'ArrowRight') {
         event.preventDefault();
-        goToPrevious();
-      } else if (event.code === 'KeyR') {
+        handleDontKnowWord();
+      } else if (event.code === 'KeyZ') {
         event.preventDefault();
-        resetToFirst();
-      } else if (event.code === 'KeyA') {
-        event.preventDefault();
-        setSelectedChapter(null); // Show all chapters
+        undoShuffle();
       } else if (event.code === 'KeyS') {
         event.preventDefault();
         shuffleCards();
-      } else if (event.code === 'KeyU') {
+      } else if (event.code === 'KeyA') {
         event.preventDefault();
-        undoShuffle();
-      } else if (event.code === 'KeyY') {
-        event.preventDefault();
-        handleKnowWord();
-      } else if (event.code === 'KeyN') {
-        event.preventDefault();
-        handleDontKnowWord();
+        setSelectedChapter(null); // Show all chapters
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNext, goToPrevious, resetToFirst, shuffleCards, undoShuffle, handleKnowWord, handleDontKnowWord]);
+  }, [handleKnowWord, handleDontKnowWord, undoShuffle, shuffleCards]);
 
   if (isLoading) {
     return (
@@ -261,13 +281,15 @@ export function FlashcardApp() {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         {/* Sidebar */}
-        <ChapterSidebar
-          availableLetters={availableLetters}
-          selectedChapter={selectedChapter}
-          chapterCounts={chapterCounts}
-          onChapterSelect={handleChapterSelect}
-          wordStackCount={wordStack.length}
-        />
+                <ChapterSidebar
+                  availableLetters={availableLetters}
+                  selectedChapter={selectedChapter}
+                  chapterCounts={chapterCounts}
+                  onChapterSelect={handleChapterSelect}
+                  wordStackCount={wordStack.length}
+                  knownCount={allFlashcards.filter(card => card.isKnown).length}
+                  unknownCount={allFlashcards.filter(card => !card.isKnown).length}
+                />
 
         {/* Main content */}
         <div className="flex-1 flex flex-col">
@@ -287,7 +309,10 @@ export function FlashcardApp() {
               <h1 className="text-lg font-semibold">Flashcards</h1>
               {selectedChapter && (
                 <div className="text-sm text-muted-foreground">
-                  {selectedChapter === 'STACK' ? 'Word Stack' : `Chapter ${selectedChapter}`}
+                  {selectedChapter === 'STACK' ? 'Word Stack' : 
+                   selectedChapter === 'KNOWN' ? 'Known Words' :
+                   selectedChapter === 'UNKNOWN' ? 'Unknown Words' :
+                   `Chapter ${selectedChapter}`}
                 </div>
               )}
             </div>
@@ -329,8 +354,8 @@ export function FlashcardApp() {
                   </p>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>Press <kbd className="px-2 py-1 bg-muted rounded text-xs">Space</kbd> to flip card</p>
-                    <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←→</kbd> to navigate • <kbd className="px-2 py-1 bg-muted rounded text-xs">S</kbd> shuffle • <kbd className="px-2 py-1 bg-muted rounded text-xs">U</kbd> undo</p>
-                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">Y</kbd> I know this • <kbd className="px-2 py-1 bg-muted rounded text-xs">N</kbd> I don't know</p>
+                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">←</kbd> I Know This • <kbd className="px-2 py-1 bg-muted rounded text-xs">→</kbd> Don't Know</p>
+                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">S</kbd> Shuffle • <kbd className="px-2 py-1 bg-muted rounded text-xs">Z</kbd> Undo • <kbd className="px-2 py-1 bg-muted rounded text-xs">A</kbd> All Words</p>
                   </div>
                 </div>
 
@@ -342,56 +367,23 @@ export function FlashcardApp() {
                 {/* Knowledge buttons */}
                 <div className="flex justify-center items-center gap-4 mb-4">
                   <Button
+                    onClick={handleKnowWord}
+                    variant="default"
+                    size="lg"
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="h-5 w-5" />
+                    I Know This (←)
+                  </Button>
+                  
+                  <Button
                     onClick={handleDontKnowWord}
                     variant="destructive"
                     size="lg"
                     className="flex items-center gap-2"
                   >
                     <XCircle className="h-5 w-5" />
-                    Don't Know
-                  </Button>
-                  
-                  <Button
-                    onClick={handleKnowWord}
-                    variant="default"
-                    size="lg"
-                    className="flex items-center gap-2"
-                  >
-                    <CheckCircle className="h-5 w-5" />
-                    I Know This
-                  </Button>
-                </div>
-
-                {/* Navigation Controls */}
-                <div className="flex justify-center items-center gap-4">
-                  <Button
-                    onClick={goToPrevious}
-                    variant="outline"
-                    size="lg"
-                    disabled={currentFlashcards.length <= 1}
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                    Previous
-                  </Button>
-                  
-                  <Button
-                    onClick={resetToFirst}
-                    variant="outline"
-                    size="lg"
-                    disabled={currentIndex === 0}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Reset
-                  </Button>
-                  
-                  <Button
-                    onClick={goToNext}
-                    variant="outline" 
-                    size="lg"
-                    disabled={currentFlashcards.length <= 1}
-                  >
-                    Next
-                    <ChevronRight className="h-5 w-5" />
+                    Don't Know (→)
                   </Button>
                 </div>
               </div>
