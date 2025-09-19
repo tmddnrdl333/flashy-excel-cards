@@ -11,8 +11,6 @@ export default function ChapterSelection() {
   const [chapters, setChapters] = useState<FlashcardChapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [wordStackCount, setWordStackCount] = useState(0);
-  const [knownWords, setKnownWords] = useState(0);
-  const [unknownWords, setUnknownWords] = useState(0);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -48,10 +46,6 @@ export default function ChapterSelection() {
   const handleChapterSelect = (letter: string | null) => {
     if (letter === 'STACK') {
       navigate('/flashcards?chapter=STACK');
-    } else if (letter === 'KNOWN') {
-      navigate('/flashcards?chapter=KNOWN');
-    } else if (letter === 'UNKNOWN') {
-      navigate('/flashcards?chapter=UNKNOWN');
     } else if (letter === null) {
       navigate('/flashcards');
     } else {

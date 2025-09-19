@@ -85,11 +85,20 @@ export function FlashcardComponent({ card }: FlashcardComponentProps) {
                 {card.korean}
               </div>
               
-              <div className="text-sm text-muted-foreground mb-2">
-                <Badge variant={card.isKnown ? "default" : "secondary"}>
-                  {card.isKnown ? "Known" : "Learning"}
-                </Badge>
-              </div>
+              {card.synonyms.length > 0 && (
+                <div className="border-t pt-4 space-y-2">
+                  <div className="text-sm uppercase tracking-wide text-muted-foreground font-medium">
+                    Synonyms
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {card.synonyms.map((synonym, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
+                        {synonym}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="text-sm text-muted-foreground pt-2">
                 Click or press Space to flip back
