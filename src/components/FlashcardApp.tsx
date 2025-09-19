@@ -1,23 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Flashcard } from '@/types/flashcard';
 import { readExcelFile, groupFlashcardsByLetter, getAllAvailableLetters, FlashcardChapter } from '@/utils/excelReader';
 import { FlashcardComponent } from './FlashcardComponent';
 import { ChapterSidebar } from './ChapterSidebar';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Shuffle, Undo2, CheckCircle, XCircle, Home } from 'lucide-react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
+import { useWordStack } from '@/hooks/useWordStack';
 
 export function FlashcardApp() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [allFlashcards, setAllFlashcards] = useState<Flashcard[]>([]);
   const [chapters, setChapters] = useState<FlashcardChapter[]>([]);
   const [availableLetters, setAvailableLetters] = useState<string[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
   const [currentFlashcards, setCurrentFlashcards] = useState<Flashcard[]>([]);
+  const [originalOrder, setOriginalOrder] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { wordStack, addToStack, removeFromStack, isInStack, shuffleStack } = useWordStack();
 
   useEffect(() => {
     const loadFlashcards = async () => {
@@ -30,7 +36,6 @@ export function FlashcardApp() {
         }
         
         setAllFlashcards(cards);
-        setCurrentFlashcards(cards);
         
         // Group cards by chapters
         const groupedChapters = groupFlashcardsByLetter(cards);
@@ -40,26 +45,14 @@ export function FlashcardApp() {
         const letters = getAllAvailableLetters(cards);
         setAvailableLetters(letters);
         
-        // Check if we're using sample data or actual Excel file
-        try {
-          const response = await fetch('/words.xlsx');
-          if (response.ok) {
-            toast({
-              title: "Flashcards loaded!",
-              description: `Successfully loaded ${cards.length} flashcards from Excel file. Organized into ${letters.length} chapters.`,
-            });
-          } else {
-            toast({
-              title: "Using sample data",
-              description: `No Excel file found. Loaded ${cards.length} sample flashcards. Upload words.xlsx to use your own data.`,
-            });
-          }
-        } catch {
-          toast({
-            title: "Using sample data", 
-            description: `No Excel file found. Loaded ${cards.length} sample flashcards. Upload words.xlsx to use your own data.`,
-          });
-        }
+        // Set initial chapter from URL params
+        const chapterParam = searchParams.get('chapter');
+        setSelectedChapter(chapterParam);
+        
+        toast({
+          title: "Flashcards loaded!",
+          description: `Successfully loaded ${cards.length} flashcards from Excel file. Organized into ${letters.length} chapters.`,
+        });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load flashcards';
         setError(errorMessage);
@@ -74,18 +67,25 @@ export function FlashcardApp() {
     };
 
     loadFlashcards();
-  }, [toast]);
+  }, [toast, searchParams]);
 
   // Update current flashcards when chapter selection changes
   useEffect(() => {
-    if (selectedChapter === null) {
-      setCurrentFlashcards(allFlashcards);
+    let cards: Flashcard[] = [];
+    
+    if (selectedChapter === 'STACK') {
+      cards = [...wordStack].sort(() => Math.random() - 0.5); // Random order for word stack
+    } else if (selectedChapter === null) {
+      cards = allFlashcards;
     } else {
       const chapter = chapters.find(ch => ch.letter === selectedChapter);
-      setCurrentFlashcards(chapter ? chapter.cards : []);
+      cards = chapter ? chapter.cards : [];
     }
+    
+    setCurrentFlashcards(cards);
+    setOriginalOrder([...cards]);
     setCurrentIndex(0); // Reset to first card when changing chapter
-  }, [selectedChapter, allFlashcards, chapters]);
+  }, [selectedChapter, allFlashcards, chapters, wordStack]);
 
   const goToNext = useCallback(() => {
     if (currentFlashcards.length > 0) {
@@ -103,6 +103,63 @@ export function FlashcardApp() {
     setCurrentIndex(0);
   }, []);
 
+  const shuffleCards = useCallback(() => {
+    if (selectedChapter === 'STACK') {
+      shuffleStack();
+    } else {
+      const shuffled = [...currentFlashcards].sort(() => Math.random() - 0.5);
+      setCurrentFlashcards(shuffled);
+      setCurrentIndex(0);
+      toast({
+        title: "Cards shuffled!",
+        description: "The order has been randomized.",
+      });
+    }
+  }, [currentFlashcards, selectedChapter, shuffleStack, toast]);
+
+  const undoShuffle = useCallback(() => {
+    setCurrentFlashcards([...originalOrder]);
+    setCurrentIndex(0);
+    toast({
+      title: "Order restored!",
+      description: "Cards are back to original order.",
+    });
+  }, [originalOrder, toast]);
+
+  const handleKnowWord = useCallback(() => {
+    const currentCard = currentFlashcards[currentIndex];
+    if (selectedChapter === 'STACK') {
+      removeFromStack(currentCard.id);
+      toast({
+        title: "Word removed from stack!",
+        description: `"${currentCard.english}" removed from your study list.`,
+      });
+    } else {
+      toast({
+        title: "Great!",
+        description: `You know "${currentCard.english}"!`,
+      });
+    }
+    goToNext();
+  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, toast, goToNext]);
+
+  const handleDontKnowWord = useCallback(() => {
+    const currentCard = currentFlashcards[currentIndex];
+    if (selectedChapter !== 'STACK') {
+      addToStack(currentCard);
+      toast({
+        title: "Added to word stack!",
+        description: `"${currentCard.english}" added to your study list.`,
+      });
+    } else {
+      toast({
+        title: "Keep studying!",
+        description: `"${currentCard.english}" stays in your study list.`,
+      });
+    }
+    goToNext();
+  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, toast, goToNext]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -118,12 +175,24 @@ export function FlashcardApp() {
       } else if (event.code === 'KeyA') {
         event.preventDefault();
         setSelectedChapter(null); // Show all chapters
+      } else if (event.code === 'KeyS') {
+        event.preventDefault();
+        shuffleCards();
+      } else if (event.code === 'KeyU') {
+        event.preventDefault();
+        undoShuffle();
+      } else if (event.code === 'KeyY') {
+        event.preventDefault();
+        handleKnowWord();
+      } else if (event.code === 'KeyN') {
+        event.preventDefault();
+        handleDontKnowWord();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNext, goToPrevious, resetToFirst]);
+  }, [goToNext, goToPrevious, resetToFirst, shuffleCards, undoShuffle, handleKnowWord, handleDontKnowWord]);
 
   if (isLoading) {
     return (
@@ -197,20 +266,54 @@ export function FlashcardApp() {
           selectedChapter={selectedChapter}
           chapterCounts={chapterCounts}
           onChapterSelect={handleChapterSelect}
+          wordStackCount={wordStack.length}
         />
 
         {/* Main content */}
         <div className="flex-1 flex flex-col">
           {/* Header with sidebar trigger */}
-          <header className="h-12 flex items-center border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <SidebarTrigger className="mr-4" />
+          <header className="h-12 flex items-center justify-between border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center gap-4">
+              <SidebarTrigger />
+              <Button
+                onClick={() => navigate('/')}
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Home className="h-4 w-4" />
+                Home
+              </Button>
               <h1 className="text-lg font-semibold">Flashcards</h1>
               {selectedChapter && (
                 <div className="text-sm text-muted-foreground">
-                  Chapter {selectedChapter}
+                  {selectedChapter === 'STACK' ? 'Word Stack' : `Chapter ${selectedChapter}`}
                 </div>
               )}
+            </div>
+            
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={shuffleCards}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                disabled={currentFlashcards.length <= 1}
+              >
+                <Shuffle className="h-4 w-4" />
+                Shuffle
+              </Button>
+              <Button
+                onClick={undoShuffle}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                disabled={currentFlashcards.length <= 1}
+              >
+                <Undo2 className="h-4 w-4" />
+                Undo
+              </Button>
             </div>
           </header>
 
@@ -226,8 +329,8 @@ export function FlashcardApp() {
                   </p>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>Press <kbd className="px-2 py-1 bg-muted rounded text-xs">Space</kbd> to flip card</p>
-                    <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←→</kbd> or <kbd className="px-2 py-1 bg-muted rounded text-xs">N</kbd>/<kbd className="px-2 py-1 bg-muted rounded text-xs">P</kbd> to navigate</p>
-                    <p>Press <kbd className="px-2 py-1 bg-muted rounded text-xs">A</kbd> to view all chapters</p>
+                    <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←→</kbd> to navigate • <kbd className="px-2 py-1 bg-muted rounded text-xs">S</kbd> shuffle • <kbd className="px-2 py-1 bg-muted rounded text-xs">U</kbd> undo</p>
+                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">Y</kbd> I know this • <kbd className="px-2 py-1 bg-muted rounded text-xs">N</kbd> I don't know</p>
                   </div>
                 </div>
 
@@ -236,7 +339,30 @@ export function FlashcardApp() {
                   <FlashcardComponent card={currentCard} />
                 </div>
 
-                {/* Controls */}
+                {/* Knowledge buttons */}
+                <div className="flex justify-center items-center gap-4 mb-4">
+                  <Button
+                    onClick={handleDontKnowWord}
+                    variant="destructive"
+                    size="lg"
+                    className="flex items-center gap-2"
+                  >
+                    <XCircle className="h-5 w-5" />
+                    Don't Know
+                  </Button>
+                  
+                  <Button
+                    onClick={handleKnowWord}
+                    variant="default"
+                    size="lg"
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle className="h-5 w-5" />
+                    I Know This
+                  </Button>
+                </div>
+
+                {/* Navigation Controls */}
                 <div className="flex justify-center items-center gap-4">
                   <Button
                     onClick={goToPrevious}

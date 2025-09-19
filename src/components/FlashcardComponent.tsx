@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Flashcard } from '@/types/flashcard';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface FlashcardComponentProps {
   card: Flashcard;
@@ -91,12 +92,9 @@ export function FlashcardComponent({ card }: FlashcardComponentProps) {
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
                     {card.synonyms.map((synonym, index) => (
-                      <span 
-                        key={index}
-                        className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium"
-                      >
+                      <Badge key={index} variant="secondary" className="text-xs">
                         {synonym}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>

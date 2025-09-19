@@ -1,4 +1,4 @@
-import { Book, Hash } from 'lucide-react';
+import { Book, Hash, Brain } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ interface ChapterSidebarProps {
   selectedChapter: string | null;
   chapterCounts: { [key: string]: number };
   onChapterSelect: (letter: string | null) => void;
+  wordStackCount?: number;
 }
 
 export function ChapterSidebar({
@@ -25,6 +26,7 @@ export function ChapterSidebar({
   selectedChapter,
   chapterCounts,
   onChapterSelect,
+  wordStackCount = 0,
 }: ChapterSidebarProps) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -62,6 +64,28 @@ export function ChapterSidebar({
                   {!collapsed && (
                     <Badge variant="secondary" className="ml-auto text-xs">
                       {Object.values(chapterCounts).reduce((sum, count) => sum + count, 0)}
+                    </Badge>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Word Stack Option */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onChapterSelect('STACK')}
+                  className={`${
+                    selectedChapter === 'STACK'
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'hover:bg-accent hover:text-accent-foreground'
+                  } ${collapsed ? 'justify-center' : 'justify-between'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && <span>Word Stack</span>}
+                  </div>
+                  {!collapsed && (
+                    <Badge variant="default" className="ml-auto text-xs">
+                      {wordStackCount}
                     </Badge>
                   )}
                 </SidebarMenuButton>

@@ -1,7 +1,7 @@
-import { FlashcardApp } from "@/components/FlashcardApp";
+import ChapterSelection from "./ChapterSelection";
 
 const Index = () => {
-  return <FlashcardApp />;
+  return <ChapterSelection />;
 };
 
 export default Index;
