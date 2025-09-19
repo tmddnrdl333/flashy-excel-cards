@@ -28,7 +28,11 @@ export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
     
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     
+    console.log('Excel file parsing debug:');
+    console.log('Total rows in Excel:', jsonData.length);
+    
     const flashcards: Flashcard[] = [];
+    let skippedRows = 0;
     
     // Skip header row if it exists
     const startRow = 1;
@@ -36,7 +40,14 @@ export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
     for (let i = startRow; i < jsonData.length; i++) {
       const row = jsonData[i] as any[];
       
-      if (row.length >= 2 && row[0] && row[1]) {
+      // Debug: Log first few rows to understand the structure
+      if (i < 10) {
+        console.log(`Row ${i}:`, row, 'Length:', row.length, 'Has data:', !!row[0], !!row[1]);
+      }
+      
+      // Check if row has data (more lenient check)
+      if (row && row.length >= 2 && row[0] !== undefined && row[0] !== null && row[0] !== '' && 
+          row[1] !== undefined && row[1] !== null && row[1] !== '') {
         const synonyms = row[2] ? String(row[2]).split(',').map(s => s.trim()).filter(s => s.length > 0) : [];
         
         flashcards.push({
@@ -45,8 +56,17 @@ export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
           korean: String(row[1]).trim(),
           synonyms
         });
+      } else {
+        skippedRows++;
+        // Log some skipped rows for debugging
+        if (skippedRows < 10) {
+          console.log(`Skipped row ${i}:`, row);
+        }
       }
     }
+    
+    console.log('Successfully parsed flashcards:', flashcards.length);
+    console.log('Skipped rows:', skippedRows);
     
     return flashcards;
   } catch (error) {
