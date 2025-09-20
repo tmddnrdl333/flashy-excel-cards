@@ -1,4 +1,4 @@
-import { Book, Hash, Brain } from 'lucide-react';
+import { Book, Hash, Brain, CheckCircle, XCircle } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +19,7 @@ interface ChapterSidebarProps {
   chapterCounts: { [key: string]: number };
   onChapterSelect: (letter: string | null) => void;
   wordStackCount?: number;
+  knownWordsCount?: number;
 }
 
 export function ChapterSidebar({
@@ -27,6 +28,7 @@ export function ChapterSidebar({
   chapterCounts,
   onChapterSelect,
   wordStackCount = 0,
+  knownWordsCount = 0,
 }: ChapterSidebarProps) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -82,6 +84,50 @@ export function ChapterSidebar({
                   <div className="flex items-center gap-2">
                     <Brain className="h-4 w-4 flex-shrink-0" />
                     {!collapsed && <span>Word Stack</span>}
+                  </div>
+                  {!collapsed && (
+                    <Badge variant="default" className="ml-auto text-xs">
+                      {wordStackCount}
+                    </Badge>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Known Words Option */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onChapterSelect('KNOWN')}
+                  className={`${
+                    selectedChapter === 'KNOWN'
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'hover:bg-accent hover:text-accent-foreground'
+                  } ${collapsed ? 'justify-center' : 'justify-between'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && <span>Known Words</span>}
+                  </div>
+                  {!collapsed && (
+                    <Badge variant="default" className="ml-auto text-xs">
+                      {knownWordsCount}
+                    </Badge>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Unknown Words Option */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onChapterSelect('UNKNOWN')}
+                  className={`${
+                    selectedChapter === 'UNKNOWN'
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'hover:bg-accent hover:text-accent-foreground'
+                  } ${collapsed ? 'justify-center' : 'justify-between'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && <span>Unknown Words</span>}
                   </div>
                   {!collapsed && (
                     <Badge variant="default" className="ml-auto text-xs">

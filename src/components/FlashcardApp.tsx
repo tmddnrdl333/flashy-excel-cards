@@ -23,7 +23,18 @@ export function FlashcardApp() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { wordStack, addToStack, removeFromStack, isInStack, shuffleStack } = useWordStack();
+  const { 
+    wordStack, 
+    knownWords, 
+    addToStack, 
+    addToKnownWords, 
+    removeFromStack, 
+    removeFromKnownWords, 
+    isInStack, 
+    isKnown, 
+    shuffleStack, 
+    shuffleKnownWords 
+  } = useWordStack();
 
   useEffect(() => {
     const loadFlashcards = async () => {
@@ -75,6 +86,10 @@ export function FlashcardApp() {
     
     if (selectedChapter === 'STACK') {
       cards = [...wordStack].sort(() => Math.random() - 0.5); // Random order for word stack
+    } else if (selectedChapter === 'KNOWN') {
+      cards = [...knownWords];
+    } else if (selectedChapter === 'UNKNOWN') {
+      cards = [...wordStack];
     } else if (selectedChapter === null) {
       cards = allFlashcards;
     } else {
@@ -85,7 +100,7 @@ export function FlashcardApp() {
     setCurrentFlashcards(cards);
     setOriginalOrder([...cards]);
     setCurrentIndex(0); // Reset to first card when changing chapter
-  }, [selectedChapter, allFlashcards, chapters, wordStack]);
+  }, [selectedChapter, allFlashcards, chapters, wordStack, knownWords]);
 
   const goToNext = useCallback(() => {
     if (currentFlashcards.length > 0) {
@@ -104,8 +119,10 @@ export function FlashcardApp() {
   }, []);
 
   const shuffleCards = useCallback(() => {
-    if (selectedChapter === 'STACK') {
+    if (selectedChapter === 'STACK' || selectedChapter === 'UNKNOWN') {
       shuffleStack();
+    } else if (selectedChapter === 'KNOWN') {
+      shuffleKnownWords();
     } else {
       const shuffled = [...currentFlashcards].sort(() => Math.random() - 0.5);
       setCurrentFlashcards(shuffled);
@@ -115,7 +132,7 @@ export function FlashcardApp() {
         description: "The order has been randomized.",
       });
     }
-  }, [currentFlashcards, selectedChapter, shuffleStack, toast]);
+  }, [currentFlashcards, selectedChapter, shuffleStack, shuffleKnownWords, toast]);
 
   const undoShuffle = useCallback(() => {
     setCurrentFlashcards([...originalOrder]);
@@ -128,37 +145,50 @@ export function FlashcardApp() {
 
   const handleKnowWord = useCallback(() => {
     const currentCard = currentFlashcards[currentIndex];
-    if (selectedChapter === 'STACK') {
+    if (selectedChapter === 'STACK' || selectedChapter === 'UNKNOWN') {
       removeFromStack(currentCard.id);
       toast({
         title: "Word removed from stack!",
         description: `"${currentCard.english}" removed from your study list.`,
       });
-    } else {
+    } else if (selectedChapter === 'KNOWN') {
+      removeFromKnownWords(currentCard.id);
       toast({
-        title: "Great!",
-        description: `You know "${currentCard.english}"!`,
+        title: "Word removed from known words!",
+        description: `"${currentCard.english}" removed from known words.`,
+      });
+    } else {
+      addToKnownWords(currentCard);
+      toast({
+        title: "Added to known words!",
+        description: `"${currentCard.english}" marked as known.`,
       });
     }
     goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, toast, goToNext]);
+  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, removeFromKnownWords, addToKnownWords, toast, goToNext]);
 
   const handleDontKnowWord = useCallback(() => {
     const currentCard = currentFlashcards[currentIndex];
-    if (selectedChapter !== 'STACK') {
+    if (selectedChapter === 'KNOWN') {
+      removeFromKnownWords(currentCard.id);
+      toast({
+        title: "Word removed from known words!",
+        description: `"${currentCard.english}" removed from known words.`,
+      });
+    } else if (selectedChapter === 'STACK' || selectedChapter === 'UNKNOWN') {
+      toast({
+        title: "Keep studying!",
+        description: `"${currentCard.english}" stays in your study list.`,
+      });
+    } else {
       addToStack(currentCard);
       toast({
         title: "Added to word stack!",
         description: `"${currentCard.english}" added to your study list.`,
       });
-    } else {
-      toast({
-        title: "Keep studying!",
-        description: `"${currentCard.english}" stays in your study list.`,
-      });
     }
     goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, toast, goToNext]);
+  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, removeFromKnownWords, toast, goToNext]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -267,6 +297,7 @@ export function FlashcardApp() {
           chapterCounts={chapterCounts}
           onChapterSelect={handleChapterSelect}
           wordStackCount={wordStack.length}
+          knownWordsCount={knownWords.length}
         />
 
         {/* Main content */}
@@ -287,7 +318,10 @@ export function FlashcardApp() {
               <h1 className="text-lg font-semibold">Flashcards</h1>
               {selectedChapter && (
                 <div className="text-sm text-muted-foreground">
-                  {selectedChapter === 'STACK' ? 'Word Stack' : `Chapter ${selectedChapter}`}
+                  {selectedChapter === 'STACK' ? 'Word Stack' : 
+                   selectedChapter === 'KNOWN' ? 'Known Words' :
+                   selectedChapter === 'UNKNOWN' ? 'Unknown Words' :
+                   `Chapter ${selectedChapter}`}
                 </div>
               )}
             </div>
