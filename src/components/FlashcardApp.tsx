@@ -1,14 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Flashcard } from '@/types/flashcard';
+import { Deck, Card } from '@/types/deck';
 import { readExcelFile, groupFlashcardsByLetter, getAllAvailableLetters, FlashcardChapter } from '@/utils/excelReader';
 import { FlashcardComponent } from './FlashcardComponent';
 import { ChapterSidebar } from './ChapterSidebar';
+import { FileImportButton } from './FileImportButton';
+import { DeckControls } from './DeckControls';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, RotateCcw, Shuffle, Undo2, CheckCircle, XCircle, Home } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, CheckCircle, XCircle, Home } from 'lucide-react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import { useWordStack } from '@/hooks/useWordStack';
+import { useDeckStorage } from '@/hooks/useDeckStorage';
+
+// Convert Card to Flashcard for compatibility
+function cardToFlashcard(card: Card): Flashcard {
+  return {
+    id: parseInt(card.id.replace(/[^0-9]/g, '')) || Math.random(),
+    english: card.word,
+    korean: card.meaning,
+    synonyms: card.synonyms || []
+  };
+}
 
 export function FlashcardApp() {
   const [searchParams] = useSearchParams();
@@ -20,9 +34,9 @@ export function FlashcardApp() {
   const [currentFlashcards, setCurrentFlashcards] = useState<Flashcard[]>([]);
   const [originalOrder, setOriginalOrder] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
   const { 
     wordStack, 
     knownWords, 
@@ -36,49 +50,84 @@ export function FlashcardApp() {
     shuffleKnownWords 
   } = useWordStack();
 
-  useEffect(() => {
-    const loadFlashcards = async () => {
-      try {
-        setIsLoading(true);
-        const cards = await readExcelFile('/words.xlsx');
-        
-        if (cards.length === 0) {
-          throw new Error('No flashcards found in the Excel file');
-        }
-        
-        setAllFlashcards(cards);
-        
-        // Group cards by chapters
-        const groupedChapters = groupFlashcardsByLetter(cards);
-        setChapters(groupedChapters);
-        
-        // Get available letters
-        const letters = getAllAvailableLetters(cards);
-        setAvailableLetters(letters);
-        
-        // Set initial chapter from URL params
-        const chapterParam = searchParams.get('chapter');
-        setSelectedChapter(chapterParam);
-        
-        toast({
-          title: "Flashcards loaded!",
-          description: `Successfully loaded ${cards.length} flashcards from Excel file. Organized into ${letters.length} chapters.`,
-        });
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load flashcards';
-        setError(errorMessage);
-        toast({
-          title: "Error loading flashcards",
-          description: errorMessage,
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const {
+    currentDeck,
+    loading: deckLoading,
+    filter,
+    setFilter,
+    setCardStatus,
+    getCardStatus,
+    getFilteredCards,
+    getStatsSummary,
+    loadDeck,
+    exportDeck
+  } = useDeckStorage();
 
-    loadFlashcards();
-  }, [toast, searchParams]);
+  // Convert deck cards to flashcards when deck changes
+  useEffect(() => {
+    if (currentDeck) {
+      const flashcards = currentDeck.cards.map(cardToFlashcard);
+      setAllFlashcards(flashcards);
+      
+      // Group cards by chapters
+      const groupedChapters = groupFlashcardsByLetter(flashcards);
+      setChapters(groupedChapters);
+      
+      // Get available letters
+      const letters = getAllAvailableLetters(flashcards);
+      setAvailableLetters(letters);
+      
+      // Set initial chapter from URL params
+      const chapterParam = searchParams.get('chapter');
+      setSelectedChapter(chapterParam);
+      
+      setError(null);
+    }
+  }, [currentDeck, searchParams]);
+
+  // Fallback to Excel file if no deck is loaded
+  useEffect(() => {
+    if (!deckLoading && !currentDeck && allFlashcards.length === 0) {
+      const loadFlashcards = async () => {
+        try {
+          const cards = await readExcelFile('/words.xlsx');
+          
+          if (cards.length === 0) {
+            throw new Error('No flashcards found in the Excel file');
+          }
+          
+          setAllFlashcards(cards);
+          
+          // Group cards by chapters
+          const groupedChapters = groupFlashcardsByLetter(cards);
+          setChapters(groupedChapters);
+          
+          // Get available letters
+          const letters = getAllAvailableLetters(cards);
+          setAvailableLetters(letters);
+          
+          // Set initial chapter from URL params
+          const chapterParam = searchParams.get('chapter');
+          setSelectedChapter(chapterParam);
+          
+          toast({
+            title: "Flashcards loaded!",
+            description: `Successfully loaded ${cards.length} flashcards from Excel file. Organized into ${letters.length} chapters.`,
+          });
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to load flashcards';
+          setError(errorMessage);
+          toast({
+            title: "Error loading flashcards",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
+      };
+
+      loadFlashcards();
+    }
+  }, [deckLoading, currentDeck, allFlashcards.length, toast, searchParams]);
 
   // Update current flashcards when chapter selection changes
   useEffect(() => {
@@ -143,8 +192,15 @@ export function FlashcardApp() {
     });
   }, [originalOrder, toast]);
 
-  const handleKnowWord = useCallback(() => {
+  const handleKnowWord = useCallback(async () => {
     const currentCard = currentFlashcards[currentIndex];
+    
+    // Use persistent storage if deck is loaded
+    if (currentDeck) {
+      await setCardStatus(currentCard.english, 'know');
+    }
+    
+    // Legacy word stack functionality
     if (selectedChapter === 'STACK' || selectedChapter === 'UNKNOWN') {
       removeFromStack(currentCard.id);
       toast({
@@ -159,16 +215,25 @@ export function FlashcardApp() {
       });
     } else {
       addToKnownWords(currentCard);
-      toast({
-        title: "Added to known words!",
-        description: `"${currentCard.english}" marked as known.`,
-      });
+      if (!currentDeck) {
+        toast({
+          title: "Added to known words!",
+          description: `"${currentCard.english}" marked as known.`,
+        });
+      }
     }
     goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, removeFromStack, removeFromKnownWords, addToKnownWords, toast, goToNext]);
+  }, [currentFlashcards, currentIndex, currentDeck, setCardStatus, selectedChapter, removeFromStack, removeFromKnownWords, addToKnownWords, toast, goToNext]);
 
-  const handleDontKnowWord = useCallback(() => {
+  const handleDontKnowWord = useCallback(async () => {
     const currentCard = currentFlashcards[currentIndex];
+    
+    // Use persistent storage if deck is loaded
+    if (currentDeck) {
+      await setCardStatus(currentCard.english, 'dont_know');
+    }
+    
+    // Legacy word stack functionality
     if (selectedChapter === 'KNOWN') {
       removeFromKnownWords(currentCard.id);
       toast({
@@ -182,23 +247,28 @@ export function FlashcardApp() {
       });
     } else {
       addToStack(currentCard);
-      toast({
-        title: "Added to word stack!",
-        description: `"${currentCard.english}" added to your study list.`,
-      });
+      if (!currentDeck) {
+        toast({
+          title: "Added to word stack!",
+          description: `"${currentCard.english}" added to your study list.`,
+        });
+      }
     }
     goToNext();
-  }, [currentFlashcards, currentIndex, selectedChapter, addToStack, removeFromKnownWords, toast, goToNext]);
+  }, [currentFlashcards, currentIndex, currentDeck, setCardStatus, selectedChapter, addToStack, removeFromKnownWords, toast, goToNext]);
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === 'ArrowRight' || event.code === 'KeyN') {
+      if (event.code === 'ArrowRight') {
         event.preventDefault();
-        goToNext();
-      } else if (event.code === 'ArrowLeft' || event.code === 'KeyP') {
+        handleKnowWord();
+      } else if (event.code === 'ArrowLeft') {
         event.preventDefault();
-        goToPrevious();
+        handleDontKnowWord();
+      } else if (event.code === 'KeyZ') {
+        event.preventDefault();
+        undoShuffle();
       } else if (event.code === 'KeyR') {
         event.preventDefault();
         resetToFirst();
@@ -208,23 +278,14 @@ export function FlashcardApp() {
       } else if (event.code === 'KeyS') {
         event.preventDefault();
         shuffleCards();
-      } else if (event.code === 'KeyU') {
-        event.preventDefault();
-        undoShuffle();
-      } else if (event.code === 'KeyY') {
-        event.preventDefault();
-        handleKnowWord();
-      } else if (event.code === 'KeyN') {
-        event.preventDefault();
-        handleDontKnowWord();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNext, goToPrevious, resetToFirst, shuffleCards, undoShuffle, handleKnowWord, handleDontKnowWord]);
+  }, [handleKnowWord, handleDontKnowWord, undoShuffle, resetToFirst, shuffleCards]);
 
-  if (isLoading) {
+  if (deckLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center space-y-4">
@@ -235,12 +296,12 @@ export function FlashcardApp() {
     );
   }
 
-  if (error) {
+  if (error && !currentDeck) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="text-center space-y-6 max-w-md">
-          <h2 className="text-2xl font-bold text-destructive">Error Loading Flashcards</h2>
-          <p className="text-muted-foreground">{error}</p>
+          <h2 className="text-2xl font-bold text-destructive">No Flashcard Deck Found</h2>
+          <p className="text-muted-foreground">Import an Excel file to get started, or the existing Excel file couldn't be loaded.</p>
           <div className="bg-muted p-6 rounded-lg text-left space-y-3">
             <p className="text-sm font-medium">Expected Excel file format:</p>
             <ul className="text-sm space-y-1">
@@ -248,30 +309,20 @@ export function FlashcardApp() {
               <li>• <strong>Column B:</strong> Korean meanings</li>
               <li>• <strong>Column C:</strong> Synonyms (optional, comma-separated)</li>
             </ul>
-            <p className="text-sm text-muted-foreground">
-              Save as <code>words.xlsx</code> in the <code>/public</code> folder
-            </p>
           </div>
-          <Button 
-            onClick={() => {
-              const { downloadSampleFile } = require('@/utils/createSampleData');
-              downloadSampleFile();
-            }}
-            className="w-full"
-          >
-            Download Sample Excel File
-          </Button>
+          <FileImportButton onDeckLoaded={loadDeck} />
         </div>
       </div>
     );
   }
 
-  if (allFlashcards.length === 0) {
+  if ((!currentDeck && allFlashcards.length === 0) || (currentDeck && currentDeck.cards.length === 0)) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">No Flashcards Found</h2>
-          <p className="text-muted-foreground">Please add some data to your Excel file.</p>
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="text-center space-y-6">
+          <h2 className="text-2xl font-bold">No Flashcards Found</h2>
+          <p className="text-muted-foreground">Import an Excel file to get started.</p>
+          <FileImportButton onDeckLoaded={loadDeck} />
         </div>
       </div>
     );
@@ -286,6 +337,8 @@ export function FlashcardApp() {
   const handleChapterSelect = (letter: string | null) => {
     setSelectedChapter(letter);
   };
+
+  const stats = getStatsSummary();
 
   return (
     <SidebarProvider>
@@ -315,7 +368,9 @@ export function FlashcardApp() {
                 <Home className="h-4 w-4" />
                 Home
               </Button>
-              <h1 className="text-lg font-semibold">Flashcards</h1>
+              <h1 className="text-lg font-semibold">
+                {currentDeck ? currentDeck.name : 'Flashcards'}
+              </h1>
               {selectedChapter && (
                 <div className="text-sm text-muted-foreground">
                   {selectedChapter === 'STACK' ? 'Word Stack' : 
@@ -326,30 +381,28 @@ export function FlashcardApp() {
               )}
             </div>
             
-            {/* Action buttons */}
             <div className="flex items-center gap-2">
-              <Button
-                onClick={shuffleCards}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-                disabled={currentFlashcards.length <= 1}
-              >
-                <Shuffle className="h-4 w-4" />
-                Shuffle
-              </Button>
-              <Button
-                onClick={undoShuffle}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-                disabled={currentFlashcards.length <= 1}
-              >
-                <Undo2 className="h-4 w-4" />
-                Undo
-              </Button>
+              <FileImportButton 
+                onDeckLoaded={loadDeck} 
+                isReimport={!!currentDeck}
+                disabled={false}
+              />
             </div>
           </header>
+
+          {/* Deck controls */}
+          {currentDeck && (
+            <div className="p-4 border-b">
+              <DeckControls
+                filter={filter}
+                onFilterChange={setFilter}
+                stats={stats}
+                onExport={exportDeck}
+                onShuffle={shuffleCards}
+                disabled={currentFlashcards.length <= 1}
+              />
+            </div>
+          )}
 
           {/* Main flashcard area */}
           <main className="flex-1 flex items-center justify-center p-4">
@@ -363,8 +416,8 @@ export function FlashcardApp() {
                   </p>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>Press <kbd className="px-2 py-1 bg-muted rounded text-xs">Space</kbd> to flip card</p>
-                    <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←→</kbd> to navigate • <kbd className="px-2 py-1 bg-muted rounded text-xs">S</kbd> shuffle • <kbd className="px-2 py-1 bg-muted rounded text-xs">U</kbd> undo</p>
-                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">Y</kbd> I know this • <kbd className="px-2 py-1 bg-muted rounded text-xs">N</kbd> I don't know</p>
+                    <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">←</kbd> Don't Know • <kbd className="px-2 py-1 bg-muted rounded text-xs">→</kbd> Know • <kbd className="px-2 py-1 bg-muted rounded text-xs">Z</kbd> Undo</p>
+                    <p><kbd className="px-2 py-1 bg-muted rounded text-xs">S</kbd> Shuffle • <kbd className="px-2 py-1 bg-muted rounded text-xs">R</kbd> Reset</p>
                   </div>
                 </div>
 
@@ -382,7 +435,7 @@ export function FlashcardApp() {
                     className="flex items-center gap-2"
                   >
                     <XCircle className="h-5 w-5" />
-                    Don't Know
+                    Don't Know (←)
                   </Button>
                   
                   <Button
@@ -392,17 +445,17 @@ export function FlashcardApp() {
                     className="flex items-center gap-2"
                   >
                     <CheckCircle className="h-5 w-5" />
-                    I Know This
+                    I Know This (→)
                   </Button>
                 </div>
 
                 {/* Navigation Controls */}
                 <div className="flex justify-center items-center gap-4">
                   <Button
-                    onClick={goToPrevious}
+                    onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
                     variant="outline"
                     size="lg"
-                    disabled={currentFlashcards.length <= 1}
+                    disabled={currentIndex === 0}
                   >
                     <ChevronLeft className="h-5 w-5" />
                     Previous
@@ -419,10 +472,10 @@ export function FlashcardApp() {
                   </Button>
                   
                   <Button
-                    onClick={goToNext}
+                    onClick={() => setCurrentIndex(Math.min(currentFlashcards.length - 1, currentIndex + 1))}
                     variant="outline" 
                     size="lg"
-                    disabled={currentFlashcards.length <= 1}
+                    disabled={currentIndex === currentFlashcards.length - 1}
                   >
                     Next
                     <ChevronRight className="h-5 w-5" />

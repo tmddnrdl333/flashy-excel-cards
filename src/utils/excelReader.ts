@@ -6,19 +6,26 @@ export interface FlashcardChapter {
   cards: Flashcard[];
 }
 
-export async function readExcelFile(filePath: string): Promise<Flashcard[]> {
+export async function readExcelFile(input: string | File): Promise<Flashcard[]> {
   try {
-    const response = await fetch(filePath);
-    if (!response.ok) {
-      // If Excel file doesn't exist, return sample data
-      if (response.status === 404) {
-        const { sampleFlashcards } = await import('@/utils/sampleWords');
-        return sampleFlashcards;
-      }
-      throw new Error(`Failed to fetch Excel file: ${response.statusText}`);
-    }
+    let arrayBuffer: ArrayBuffer;
     
-    const arrayBuffer = await response.arrayBuffer();
+    if (input instanceof File) {
+      // Handle File object directly
+      arrayBuffer = await input.arrayBuffer();
+    } else {
+      // Handle file path (existing behavior)
+      const response = await fetch(input);
+      if (!response.ok) {
+        // If Excel file doesn't exist, return sample data
+        if (response.status === 404) {
+          const { sampleFlashcards } = await import('@/utils/sampleWords');
+          return sampleFlashcards;
+        }
+        throw new Error(`Failed to fetch Excel file: ${response.statusText}`);
+      }
+      arrayBuffer = await response.arrayBuffer();
+    }
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     
